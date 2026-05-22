@@ -1,0 +1,48 @@
+gateway:
+  http_host: "0.0.0.0"
+  http_port: 9100
+  log_level: "INFO"
+  data_dir: "data"
+  heartbeat_timeout: 86400
+
+devices:
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "radar_meeting"
+    name: "会议室雷达"
+    location: "会议室"
+    config: {}
+
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "camera_lobby"
+    name: "大堂摄像头"
+    location: "大堂"
+    config: {}
+
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "camera_kitchen"
+    name: "厨房摄像头"
+    location: "厨房"
+    config: {}
+
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "light_living"
+    name: "客厅灯"
+    location: "客厅"
+    config: {}
+
+  - vendor: "pc"
+    model: "windows-screen"
+    device_type: "screen"
+    device_id: "screen_main"
+    name: "主屏幕"
+    location: "工位"
+    config:
+      monitor_index: 0  # 0 = 主屏幕，而不是 -1（所有显示器）

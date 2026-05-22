@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+env/
+
+# Data & logs
+*.log
+*.db
+*.db-shm
+*.db-wal
+data/
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Hermes profile
+hermesos-test/
+
+# Config secrets
+.env
+*.secret.yaml
+
+# Build
+dist/
+build/
+*.egg

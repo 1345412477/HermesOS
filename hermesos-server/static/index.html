@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HermesOS 设备控制台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+  }
+  .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 30px 0;
+    border-bottom: 1px solid #30363d;
+    margin-bottom: 24px;
+  }
+  .header h1 { font-size: 28px; color: #58a6ff; }
+  .header p { color: #8b949e; margin-top: 4px; font-size: 14px; }
+
+  /* Cards */
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-size: 16px; margin-bottom: 12px; }
+
+  /* Device list */
+  .device {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; margin: 6px 0;
+    background: #0d1117; border-radius: 6px;
+    border: 1px solid #21262d;
+  }
+  .device .name { font-weight: 500; }
+  .device .info { font-size: 12px; color: #8b949e; }
+  .device .status { font-size: 12px; }
+  .online { color: #3fb950; }
+  .offline { color: #f85149; }
+
+  /* Grid */
+  .grid { display: grid; gap: 12px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+
+  /* Buttons */
+  .btn {
+    padding: 8px 16px; border: 1px solid #30363d;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+    background: #21262d; color: #c9d1d9;
+    transition: background .2s;
+  }
+  .btn:hover { background: #30363d; }
+  .btn-primary { background: #238636; border-color: rgba(46,160,67,0.4); }
+  .btn-primary:hover { background: #2ea043; }
+
+  /* Slider */
+  input[type="range"] {
+    width: 100%; margin: 8px 0;
+    -webkit-appearance: none; height: 6px;
+    background: #30363d; border-radius: 3px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px;
+    background: #58a6ff; border-radius: 50%; cursor: pointer;
+  }
+  .slider-value { font-size: 14px; font-weight: 600; color: #58a6ff; text-align: center; }
+
+  /* Log */
+  .log-area {
+    background: #0d1117; border: 1px solid #21262d;
+    border-radius: 6px; padding: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 12px; height: 200px; overflow-y: auto;
+    white-space: pre-wrap; line-height: 1.6;
+  }
+  .log-area .log-time { color: #8b949e; }
+  .log-area .log-ok { color: #3fb950; }
+  .log-area .log-err { color: #f85149; }
+  .log-area .log-info { color: #58a6ff; }
+
+  /* Input */
+  .input-row { display: flex; gap: 8px; }
+  .input-row input {
+    flex: 1; padding: 8px 12px;
+    background: #0d1117; border: 1px solid #30363d;
+    border-radius: 6px; color: #c9d1d9; font-size: 14px;
+  }
+  .input-row input:focus { outline: none; border-color: #58a6ff; }
+
+  /* Refresh */
+  .refresh-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🧠 HermesOS</h1>
+    <p>统一端口 8765 · 智能设备控制台</p>
+    <p style="font-size:12px;margin-top:4px;color:#484f58;" id="server-status">检测连接中...</p>
+  </div>
+
+  <!-- 设备列表 -->
+  <div class="card">
+    <div class="refresh-bar">
+      <button class="btn" onclick="refreshDevices()">🔄 刷新</button>
+    </div>
+    <h3>📡 设备列表</h3>
+    <div id="device-list"><p style="color:#8b949e;">加载中...</p></div>
+  </div>
+
+  <!-- 快捷操作 -->
+  <div class="card">
+    <h3>🎮 快捷操作</h3>
+    <div class="grid grid-2" id="quick-actions"></div>
+  </div>
+
+  <!-- 文本指令输入 -->
+  <div class="card">
+    <h3>💬 语音/文本指令</h3>
+    <div class="input-row">
+      <input type="text" id="voice-input" placeholder='例如 "打开客厅灯" 或 "屏幕亮度调到50"' onkeydown="if(event.key==='Enter')sendVoice()">
+      <button class="btn" id="mic-btn" onclick="toggleMic()">🎤</button>
+      <button class="btn btn-primary" onclick="sendVoice()">发送</button>
+    </div>
+    <div id="voice-result" style="margin-top:8px;font-size:13px;color:#8b949e;"></div>
+  </div>
+
+  <!-- 事件日志 -->
+  <div class="card">
+    <h3>📋 事件日志</h3>
+    <div class="log-area" id="log">等待事件...</div>
+  </div>
+</div>
+
+<script>
+const BASE = 'http://localhost:8765';
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString();
+  el.innerHTML += `<span class="log-time">[${time}]</span> <span class="log-${type}">${msg}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// 设备列表
+async function refreshDevices() {
+  const el = document.getElementById('device-list');
+  try {
+    const devices = await api('/api/devices');
+    el.innerHTML = devices.map(d => `
+      <div class="device">
+        <div>
+          <div class="name">${d.name}</div>
+          <div class="info">${d.device_type} · ${d.location}</div>
+        </div>
+        <div class="status ${d.online ? 'online' : 'offline'}">
+          ${d.online ? '🟢 在线' : '🔴 离线'}
+        </div>
+      </div>
+    `).join('');
+    log(`设备刷新: ${devices.length} 个设备`, 'ok');
+    buildQuickActions(devices);
+  } catch (e) {
+    el.innerHTML = `<p style="color:#f85149;">加载失败: ${e.message}</p>`;
+    log(`设备加载失败: ${e.message}`, 'err');
+  }
+}
+
+// 快捷按钮
+function buildQuickActions(devices) {
+  const el = document.getElementById('quick-actions');
+  el.innerHTML = '';
+  let hasActions = false;
+
+  devices.forEach(d => {
+    if (d.device_type === 'screen') {
+      hasActions = true;
+      const ids = { id: d.device_id, name: d.name };
+
+      [50, 100, 20].forEach(level => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.textContent = `${ids.name} ${level}%`;
+        btn.onclick = async function() {
+          this.disabled = true;
+          try {
+            const r = await api(`/api/devices/${ids.id}/command`, {
+              method: 'POST', body: JSON.stringify({ command: 'set_brightness', params: { level } })
+            });
+            log(`亮度 ${level}% → ${r.result?.data?.message || 'OK'}`, 'ok');
+          } catch (e) {
+            log(`亮度失败: ${e.message}`, 'err');
+          }
+          this.disabled = false;
+        };
+        el.appendChild(btn);
+      });
+    }
+  });
+
+  if (!hasActions) {
+    el.innerHTML = '<p style="color:#8b949e;font-size:13px;">尚无可操作的设备</p>';
+  }
+}
+
+// 文本/语音指令
+async function sendVoice() {
+  const input = document.getElementById('voice-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const resultEl = document.getElementById('voice-result');
+  resultEl.textContent = '处理中...';
+  log(`指令: "${text}"`, 'info');
+
+  try {
+    const r = await api('/api/voice/text', {
+      method: 'POST', body: JSON.stringify({ text, conversation_id: 'web-console' })
+    });
+    resultEl.textContent = r.response || r.text || JSON.stringify(r);
+    log(`回复: ${resultEl.textContent}`, 'ok');
+  } catch (e) {
+    resultEl.textContent = `错误: ${e.message}`;
+    log(`指令失败: ${e.message}`, 'err');
+  }
+
+  input.value = '';
+}
+
+// 初始化和心跳
+async function checkHealth() {
+  try {
+    const h = await api('/api/health');
+    document.getElementById('server-status').textContent =
+      `🟢 在线 · ${h.devices_online}/${h.devices_total} 设备在线 · v${h.version}`;
+    document.getElementById('server-status').style.color = '#3fb950';
+  } catch (e) {
+    document.getElementById('server-status').textContent = '🔴 服务器未连接';
+    document.getElementById('server-status').style.color = '#f85149';
+  }
+}
+
+// ══ 浏览器语音识别 + 备用录音方案 ════════════════
+let recognition = null;
+let isListening = false;
+let synth = window.speechSynthesis;
+let mediaRecorder = null;
+let audioChunks = [];
+
+// AudioBuffer → WAV 编码
+function audioBufferToWav(buffer) {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const format = 1; // PCM
+  const bitDepth = 16;
+
+  const bytesPerSample = bitDepth / 8;
+  const blockAlign = numChannels * bytesPerSample;
+  const data = [];
+  for (let ch = 0; ch < numChannels; ch++) {
+    data.push(buffer.getChannelData(ch));
+  }
+  const dataLength = data[0].length * blockAlign;
+  const headerLength = 44;
+
+  const arrayBuffer = new ArrayBuffer(headerLength + dataLength);
+  const view = new DataView(arrayBuffer);
+
+  // WAV header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, format, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitDepth, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  // PCM data
+  const offset = 44;
+  for (let i = 0; i < data[0].length; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const sample = Math.max(-1, Math.min(1, data[ch][i]));
+      const val = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset + (i * blockAlign) + (ch * bytesPerSample), val, true);
+    }
+  }
+  return arrayBuffer;
+}
+
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
+  }
+}
+
+async function toggleMic() {
+  const btn = document.getElementById('mic-btn');
+  if (isListening) {
+    if (recognition) { recognition.stop(); recognition = null; }
+    if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    isListening = false;
+    resetMicBtn(btn);
+    return;
+  }
+
+  // 直接用 MediaRecorder 录音 → 服务端 ASR
+  useMediaRecorder(btn);
+}
+
+// 方案A：浏览器 SpeechRecognition API
+function useSpeechRecognition(btn) {
+  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    isListening = true;
+    btn.textContent = '🔴 说话中';
+    btn.style.borderColor = '#f85149';
+    btn.style.background = '#581a1a';
+    log('🎤 请说话...', 'info');
+  };
+
+  recognition.onresult = async (event) => {
+    const text = event.results[0][0].transcript.trim();
+    if (!text) return;
+    document.getElementById('voice-input').value = text;
+    await sendRecognizedText(text);
+  };
+
+  recognition.onerror = (e) => {
+    log(`语音识别错误: ${e.error}`, 'err');
+    // 如果是不支持类的错误，自动切到录音方案
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      log('切换到录音方案', 'info');
+      setTimeout(() => useMediaRecorder(btn), 500);
+    }
+    resetMicBtn(btn);
+  };
+
+  recognition.onend = () => resetMicBtn(btn);
+
+  recognition.start();
+}
+
+// 方案B：MediaRecorder 录音 → 服务端 ASR
+async function useMediaRecorder(btn) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    isListening = true;
+    btn.textContent = '⏹️ 录音中';
+    btn.style.borderColor = '#f85149';
+    btn.style.background = '#581a1a';
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+      log(`录音完成，转换格式中... (${(blob.size / 1024).toFixed(1)}KB)`, 'info');
+
+      // WebM → WAV 转换（浏览器 AudioContext）
+      try {
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+        // 编码为 WAV
+        const wavBuffer = audioBufferToWav(audioBuffer);
+        const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+
+        // 转 base64 发到服务端
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const b64 = reader.result.split(',')[1];
+          try {
+            const r = await api('/api/voice', {
+              method: 'POST', body: JSON.stringify({ audio: b64 })
+            });
+            // r.transcribed = ASR 识别文字, r.text = Agent 回复
+            const asrText = (r.transcribed || '').trim();
+            if (!asrText) {
+              log('语音识别未识别到内容，请重试', 'err');
+              document.getElementById('voice-result').textContent = '❌ 未识别到语音，请重试';
+              return;
+            }
+            await sendRecognizedText(asrText);
+          } catch (e) {
+            log(`服务端语音处理失败: ${e.message}`, 'err');
+          }
+        };
+        reader.readAsDataURL(wavBlob);
+      } catch (e) {
+        log(`音频转换失败: ${e.message}`, 'err');
+      }
+    };
+
+    mediaRecorder.start();
+    log('🔴 录音中，再次点击停止', 'info');
+
+    // 点击按钮停止录音
+    btn.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        isListening = false;
+        resetMicBtn(btn);
+        btn.onclick = toggleMic; // 恢复默认行为
+      }
+    };
+
+  } catch (e) {
+    log(`麦克风访问被拒: ${e.message}`, 'err');
+    resetMicBtn(btn);
+  }
+}
+
+// 识别到的文本统一发送
+async function sendRecognizedText(text) {
+  document.getElementById('voice-result').textContent = `🎤 "${text}" 处理中...`;
+  try {
+    const r = await api('/api/voice/text', {
+      method: 'POST', body: JSON.stringify({ text })
+    });
+    document.getElementById('voice-result').innerHTML =
+      `🎤 你说: "${text}"<br>🤖 ${r.text}`;
+    log(`回复: ${r.text}`, 'ok');
+    // 语音播报
+    if (synth.speaking) synth.cancel();
+    const utter = new SpeechSynthesisUtterance(r.text);
+    utter.lang = 'zh-CN';
+    utter.rate = 1.1;
+    synth.speak(utter);
+  } catch (e) {
+    log(`指令失败: ${e.message}`, 'err');
+  }
+}
+
+function resetMicBtn(btn) {
+  btn.textContent = '🎤';
+  btn.style.borderColor = '#30363d';
+  btn.style.background = '#21262d';
+  isListening = false;
+}
+
+// 挂载 static 目录到 FastAPI
+// 需要在 main.py 加一行: app.mount("/", StaticFiles(directory="static", html=True), name="static")
+// 或直接从浏览器访问 index.html
+
+refreshDevices();
+checkHealth();
+setInterval(checkHealth, 15000);
+</script>
+</body>
+</html>

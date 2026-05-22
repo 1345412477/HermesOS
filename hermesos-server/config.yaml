@@ -1,0 +1,71 @@
+# HermesOS Server Configuration
+# All values can be overridden via environment variables or a local config.yaml
+
+server:
+  host: "0.0.0.0"
+  port: 8765
+
+voice_engine:
+  asr:
+    model: "base"
+    mock: false          # pocketsphinx offline ASR
+    mock_text: "你好，请问有什么可以帮助你的？"
+  tts:
+    voice: "zh-CN-XiaoxiaoNeural"
+    rate: "+0%"
+    pitch: "+0Hz"
+
+event_store:
+  db_path: null         # null = default location (data/events.db)
+
+agent_bridge:
+  mock: true            # Set to false when real agent bridge is ready
+
+# ── Device configuration (merged from Gateway) ───────────────
+
+device_manager:
+  log_level: "INFO"
+  data_dir: "data"
+  heartbeat_timeout: 86400
+
+devices:
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "radar_meeting"
+    name: "会议室雷达"
+    location: "会议室"
+    config: {}
+
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "camera_lobby"
+    name: "大堂摄像头"
+    location: "大堂"
+    config: {}
+
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "camera_kitchen"
+    name: "厨房摄像头"
+    location: "厨房"
+    config: {}
+
+  - vendor: "mock"
+    model: "mock-device"
+    device_type: "mock_adapter"
+    device_id: "light_living"
+    name: "客厅灯"
+    location: "客厅"
+    config: {}
+
+  - vendor: "pc"
+    model: "windows-screen"
+    device_type: "screen"
+    device_id: "screen_main"
+    name: "主屏幕"
+    location: "工位"
+    config:
+      monitor_index: 0
