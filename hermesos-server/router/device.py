@@ -16,6 +16,7 @@ try:
         DeviceCommandRequest,
         DeviceRegisterRequest,
         DeviceStatus,
+        EventStats,
         EventSummary,
         HealthResponse,
     )
@@ -24,6 +25,7 @@ except ImportError:
         DeviceCommandRequest,
         DeviceRegisterRequest,
         DeviceStatus,
+        EventStats,
         EventSummary,
         HealthResponse,
     )
@@ -195,6 +197,45 @@ async def report_device_result(device_id: str, body: dict, request: Request):
 # ── Event Routes ──────────────────────────────────────────────
 
 
+@router.get("/api/events/recent", response_model=list[EventSummary])
+async def recent_events(
+    request: Request,
+    limit: int = Query(10, ge=1, le=100),
+):
+    """Return the most recent events."""
+    store = _get_event_store(request)
+    if store is None:
+        raise HTTPException(status_code=503, detail="Event store not available")
+    try:
+        return store.get_recent(limit=limit)
+    except Exception as e:
+        logger.exception("Failed to fetch recent events")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/events/stats", response_model=EventStats)
+async def event_stats(request: Request):
+    """Return event statistics: today count and total count."""
+    store = _get_event_store(request)
+    if store is None:
+        raise HTTPException(status_code=503, detail="Event store not available")
+    try:
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_events = store.query_events(
+            time_range=(today_start, now),
+            limit=99999,
+        )
+        all_events = store.query_events(limit=99999)
+        return EventStats(
+            today=len(today_events),
+            total=len(all_events),
+        )
+    except Exception as e:
+        logger.exception("Failed to compute event stats")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/events", response_model=list[EventSummary])
 async def query_events(
     request: Request,
@@ -234,9 +275,19 @@ async def health_check(request: Request):
     dm = _get_device_manager(request)
     devices = dm.list_devices()
     online_count = sum(1 for d in devices if d.get("online"))
+
+    # Gather engine info from app state
+    asr = getattr(request.app.state, 'asr_engine', None)
+    tts = getattr(request.app.state, 'tts_engine', None)
+    bridge = getattr(request.app.state, 'agent_bridge', None)
+
     return HealthResponse(
         status="ok",
         version="0.1.0",
         devices_online=online_count,
         devices_total=len(devices),
+        startup_time=datetime.now(timezone.utc),
+        asr_engine="pocketsphinx",
+        tts_engine="Edge-TTS",
+        ai_engine="DeepSeek v4",
     )

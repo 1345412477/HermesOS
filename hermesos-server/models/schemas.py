@@ -73,9 +73,19 @@ class EventSummary(BaseModel):
 
 # ── Health ────────────────────────────────────────────────────
 
+class EventStats(BaseModel):
+    """Event statistics."""
+    today: int = 0
+    total: int = 0
+
+
 class HealthResponse(BaseModel):
     """Health-check response."""
     status: str = "ok"
     version: str = "0.1.0"
     devices_online: int = 0
     devices_total: int = 0
+    startup_time: Optional[datetime] = None
+    asr_engine: str = "pocketsphinx"
+    tts_engine: str = "Edge-TTS"
+    ai_engine: str = "DeepSeek v4"
